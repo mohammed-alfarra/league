@@ -1,0 +1,48 @@
+version: "3.9"
+
+x-restart-policy: &restart-policy
+    restart: always
+
+services:
+    nginx:
+        <<: *restart-policy
+        image: nginx:1.19
+        ports:
+            - "${HTTP_PORT}:80"
+        volumes:
+            - ./:/var/www/app
+            - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+            - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+        depends_on:
+            - php
+
+    php:
+        <<: *restart-policy
+        build:
+            context: ./docker/images/php-fpm
+        user: "${UID}"
+        volumes:
+            - ./:/var/www/app
+        depends_on:
+            - mysql
+        labels:
+            ofelia.enabled: "true"
+            ofelia.job-exec.hnn-laravel-schedule.schedule: "0 * * * * *"
+            ofelia.job-exec.hnn-laravel-schedule.command: "php artisan schedule:run --verbose --no-interaction"
+
+    mysql:
+        <<: *restart-policy
+        image: mysql:8.1
+        env_file: ./docker/mysql/.env
+        cap_add:
+            - SYS_NICE
+        ports:
+            - "${MYSQL_PORT}:3306"
+        command: --default-authentication-plugin=mysql_native_password
+        volumes:
+            - mysql-data:/var/lib/mysql
+            - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+        tmpfs:
+            - /tmp
+volumes:
+    mysql-data:
